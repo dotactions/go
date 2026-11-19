@@ -1,0 +1,32 @@
+name: Setup Go
+description: Sets up Go from go.mod (or an explicit version) with module and build caching
+
+inputs:
+  go-version:
+    description: "Go version (takes precedence over go-version-file)"
+    default: ""
+  go-version-file:
+    description: "Go version file relative to working-directory (default go.mod)"
+    default: ""
+  working-directory:
+    description: "Directory containing go.mod"
+    default: "."
+  cache:
+    description: "Cache Go modules and build output: true or false"
+    default: "true"
+
+outputs:
+  go-version:
+    description: "The installed Go version"
+    value: ${{ steps.setup-go.outputs.go-version }}
+
+runs:
+  using: composite
+  steps:
+    - id: setup-go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: ${{ inputs.go-version }}
+        go-version-file: ${{ inputs.go-version == '' && format('{0}/{1}', inputs.working-directory, inputs.go-version-file || 'go.mod') || '' }}
+        cache: ${{ inputs.cache == 'true' && hashFiles(format('{0}/go.sum', inputs.working-directory)) != '' }}
+        cache-dependency-path: ${{ inputs.working-directory }}/go.sum
