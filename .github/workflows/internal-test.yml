@@ -159,7 +159,7 @@ jobs:
       statuses: write
     with:
       working-directory: tests/fixtures
-      coverage-report: false
+      #TODO: set coverage-report to false if it causes too much noise in PR
 
   test-govulncheck:
     uses: ./.github/workflows/govulncheck.yml
