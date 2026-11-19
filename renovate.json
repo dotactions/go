@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Only tool versions Dependabot can't see; Dependabot keeps the uses: SHAs",
+  "enabledManagers": ["custom.regex"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Versions on the line below a '# renovate: datasource=<x> depName=<module or repo>' comment, as 'vX.Y.Z' or @vX.Y.Z",
+      "managerFilePatterns": ["/(^|/)action\\.ya?ml$/", "/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n[^\\n]*?['@](?<currentValue>v[\\w.-]+)"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["custom.regex"],
+      "commitMessagePrefix": "ci(tools):"
+    }
+  ]
+}

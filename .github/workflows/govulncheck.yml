@@ -55,6 +55,7 @@ jobs:
         env:
           WORK_DIR: ${{ inputs.working-directory }}
         run: |
+          # renovate: datasource=go depName=golang.org/x/vuln
           go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 -C "$WORK_DIR" -format sarif ./... > govulncheck.sarif
           # why: govulncheck writes %SRCROOT% URIs relative to the module, but reports and code scanning expect repo paths
           PREFIX=$(cd "$WORK_DIR" && pwd -P)

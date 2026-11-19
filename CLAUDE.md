@@ -34,11 +34,13 @@ Opinionated composite actions and a reusable CI workflow for Go modules, consume
 | `.github/workflows/internal-*.yml` | Thin callers of `dotactions/tooling` (see [Shared CI](#shared-ci-dotactionstooling)) |
 | `tests/fixtures/` | Minimal Go module with exactly 50% coverage |
 | `tests/unformatted/` | Deliberately non-gofmt file; do not format it |
+| `renovate.json` | Renovate, only for tool versions marked `# renovate:`; Dependabot keeps the `uses:` SHAs |
 
 ## Pinning & References
 
 - Every third-party `uses:` is pinned to a full commit SHA with a version comment: `uses: owner/repo@<40-char-sha> # vX.Y.Z`. Resolve SHAs with `git ls-remote --tags`; never guess or invent one. If you cannot resolve it, stop and ask.
 - Another `dotactions` repo is pinned the same way, to the commit of its **release tag** (`git ls-remote https://github.com/dotactions/<repo> 'refs/tags/vX.Y.Z^{}'`), never to a `main` SHA: only release commits have their own `@main` self-references rewritten. `internal-check-refs.yml` fails on anything else.
+- A tool version hardcoded as a string (e.g. an input default or `go run <module>@vX.Y.Z`) gets a `# renovate: datasource=<go|github-releases> depName=<module or owner/repo>` comment on the line above, so Renovate bumps it.
 - References to this repo's own actions **must** be `dotactions/go/<path>@main` with the comment `# @main is rewritten to the exact release tag by internal-release.yml`. Never write a tag or SHA for a self-reference.
 - Composite actions cannot reference sibling actions by relative path. Inside a reusable workflow, `./` points at the **caller's** repo. Never "fix" this with a checkout of `dotactions/go` at a branch.
 

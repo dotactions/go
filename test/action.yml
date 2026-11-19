@@ -39,6 +39,7 @@ runs:
         PACKAGES: ${{ inputs.packages }}
         ARGS: ${{ inputs.args }}
         RACE: ${{ inputs.race }}
+        # renovate: datasource=go depName=gotest.tools/gotestsum
         GOTESTSUM_VERSION: ${{ inputs.gotestsum-version || 'v1.13.0' }}
       run: |
         case "$RACE" in
