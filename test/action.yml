@@ -1,0 +1,73 @@
+name: Test Go
+description: Runs go test through gotestsum with coverage, writing JUnit XML and a repo-relative coverage profile
+
+inputs:
+  working-directory:
+    description: "Directory containing go.mod"
+    default: "."
+  packages:
+    description: "Packages to test, split on whitespace"
+    default: "./..."
+  args:
+    description: "Additional go test flags, split on whitespace (e.g. -tags=integration -count=1)"
+    default: ""
+  race:
+    description: "Run with the race detector: true or false"
+    default: "true"
+  gotestsum-version:
+    description: "gotestsum version (empty uses the version pinned by this action)"
+    default: ""
+
+outputs:
+  coverage:
+    description: "Total statement coverage percentage (e.g. 87.5); empty when no profile was written"
+    value: ${{ steps.coverage.outputs.coverage }}
+  coverage-file:
+    description: "Coverage profile path, relative to the repository root"
+    value: ${{ steps.coverage.outputs.coverage-file }}
+  junit-file:
+    description: "JUnit XML path, relative to the repository root"
+    value: ${{ steps.coverage.outputs.junit-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run tests
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        ARGS: ${{ inputs.args }}
+        RACE: ${{ inputs.race }}
+        GOTESTSUM_VERSION: ${{ inputs.gotestsum-version || 'v1.13.0' }}
+      run: |
+        case "$RACE" in
+          true) RACE_FLAG=-race ;;
+          false) RACE_FLAG= ;;
+          *) echo "::error::race must be 'true' or 'false', got '$RACE'"; exit 1 ;;
+        esac
+        rm -f coverage.out unit-tests.xml
+        set -f
+        # shellcheck disable=SC2086
+        go run "gotest.tools/gotestsum@$GOTESTSUM_VERSION" --format github-actions --junitfile unit-tests.xml -- \
+          $RACE_FLAG -coverprofile=coverage.out -covermode=atomic $ARGS $PACKAGES
+
+    - name: Make coverage paths repo-relative
+      id: coverage
+      if: always()
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        WORKSPACE=$(cd "$GITHUB_WORKSPACE" && pwd -P)
+        PREFIX=$(pwd -P)
+        PREFIX=${PREFIX#"$WORKSPACE"}
+        PREFIX=${PREFIX#/}
+        PREFIX=${PREFIX:+$PREFIX/}
+        [ -f unit-tests.xml ] && echo "junit-file=${PREFIX}unit-tests.xml" >> "$GITHUB_OUTPUT"
+        [ -f coverage.out ] || exit 0
+        echo "coverage=$(go tool cover -func=coverage.out | awk '/^total:/ { sub("%", "", $NF); print $NF }')" >> "$GITHUB_OUTPUT"
+        # why: profiles use module import paths, but PR diffs and coverage reporters use repo paths
+        # ponytail: assumes one module per working-directory, split per module if go.work lists several
+        MODULE=$(go list -m)
+        sed "s#^${MODULE//./\\.}/#${PREFIX}#" coverage.out > coverage.out.tmp && mv coverage.out.tmp coverage.out
+        echo "coverage-file=${PREFIX}coverage.out" >> "$GITHUB_OUTPUT"
