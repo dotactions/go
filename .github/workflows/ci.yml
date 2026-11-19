@@ -96,14 +96,14 @@ jobs:
           race: ${{ inputs.race }}
 
       - name: Upload test results
-        if: always() && steps.test.outputs.junit-file != ''
+        if: ${{ !cancelled() && steps.test.outputs.junit-file != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: go-test-results${{ inputs.name-suffix && format('-{0}', inputs.name-suffix) || '' }}
           path: ${{ steps.test.outputs.junit-file }}
 
       - name: Upload coverage profile
-        if: always() && steps.test.outputs.coverage-file != ''
+        if: ${{ !cancelled() && steps.test.outputs.coverage-file != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: go-coverage${{ inputs.name-suffix && format('-{0}', inputs.name-suffix) || '' }}
@@ -115,7 +115,7 @@ jobs:
     needs: test
     # why: fork PRs get a read-only token, so commenting would fail the run
     if: >-
-      always() && inputs.coverage-report && needs.test.outputs.coverage-file != '' &&
+      !cancelled() && inputs.coverage-report && needs.test.outputs.coverage-file != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 10
