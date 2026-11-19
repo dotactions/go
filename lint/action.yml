@@ -1,0 +1,35 @@
+name: Lint Go
+description: Runs golangci-lint (formatting is checked when the config enables formatters)
+
+inputs:
+  working-directory:
+    description: "Directory containing go.mod"
+    default: "."
+  version:
+    description: "golangci-lint version (empty uses the version pinned by this action)"
+    default: ""
+  config:
+    description: "golangci-lint config path relative to the repo root (empty searches working-directory and its parents)"
+    default: ""
+  args:
+    description: "Additional golangci-lint arguments (e.g. --timeout=5m)"
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve config path
+      id: config
+      if: inputs.config != ''
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+      run: |
+        [ -f "$GITHUB_WORKSPACE/$CONFIG" ] || { echo "::error::config '$CONFIG' not found (path is relative to the repo root)"; exit 1; }
+        echo "args=--config=$GITHUB_WORKSPACE/$CONFIG" >> "$GITHUB_OUTPUT"
+
+    - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+      with:
+        version: ${{ inputs.version || 'v2.15.0' }}
+        working-directory: ${{ inputs.working-directory }}
+        args: ${{ steps.config.outputs.args }} ${{ inputs.args }}
