@@ -1,0 +1,78 @@
+name: Go Vulnerability Audit
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Directory containing go.mod (the Go version is read from it)"
+        type: string
+        default: "."
+      fail-on-findings:
+        description: "Fail the workflow if findings are detected"
+        type: boolean
+        default: false
+      upload-artifact:
+        description: "Upload the SARIF report as a job artifact"
+        type: boolean
+        default: true
+      manage-issue:
+        description: "Create, update and close a tracking issue"
+        type: boolean
+        default: false
+      post-comment:
+        description: "Create or update the sticky PR comment on pull request events"
+        type: boolean
+        default: true
+    secrets:
+      token:
+        description: "GitHub token with pull-requests and issues write permissions"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ inputs.working-directory }}/go.mod
+          cache: ${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) != '' }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+      # why: in SARIF mode govulncheck exits 0 even with findings, so failing is left to sarif-reporter
+      - name: Run govulncheck
+        env:
+          WORK_DIR: ${{ inputs.working-directory }}
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 -C "$WORK_DIR" -format sarif ./... > govulncheck.sarif
+
+      - name: Report govulncheck Results
+        uses: dotactions/sarif-reporter@5796dde6b1e4f1a36ef3bdfde3002a8623715d29 # v0.2.0
+        if: always() && hashFiles('govulncheck.sarif') != ''
+        with:
+          title: "Go Vulnerability Report"
+          sarif-file: "govulncheck.sarif"
+          comment-tag: "govulncheck"
+          issue-title: "[Security Audit] Go vulnerabilities detected"
+          manage-issue: ${{ inputs.manage-issue }}
+          post-comment: ${{ inputs.post-comment }}
+          fail-on-findings: ${{ inputs.fail-on-findings }}
+          github-token: ${{ secrets.token || github.token }}
+
+      - name: Upload SARIF Artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && inputs.upload-artifact && hashFiles('govulncheck.sarif') != ''
+        with:
+          name: govulncheck-sarif
+          path: "govulncheck.sarif"
+          retention-days: 30
