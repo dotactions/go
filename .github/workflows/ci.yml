@@ -1,0 +1,151 @@
+name: Go CI
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Directory containing go.mod"
+        type: string
+        default: "."
+      go-version:
+        description: "Go version (empty reads go.mod)"
+        type: string
+        default: ""
+      golangci-lint-version:
+        description: "golangci-lint version (empty uses the version pinned by dotactions/go/lint)"
+        type: string
+        default: ""
+      lint-config:
+        description: "golangci-lint config path relative to the repo root (empty searches working-directory and its parents)"
+        type: string
+        default: ""
+      lint-args:
+        description: "Additional golangci-lint arguments"
+        type: string
+        default: ""
+      test-args:
+        description: "Additional go test flags, split on whitespace"
+        type: string
+        default: ""
+      race:
+        description: "Run tests with the race detector"
+        type: boolean
+        default: true
+      name-suffix:
+        description: "Suffix for artifact names and coverage keys, for calling this workflow once per module (e.g. a matrix over modules)"
+        type: string
+        default: ""
+      coverage-report:
+        description: "Post a coverage PR comment and status via getsentry/coverage-action"
+        type: boolean
+        default: true
+    outputs:
+      coverage:
+        description: "Total statement coverage percentage"
+        value: ${{ jobs.test.outputs.coverage }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dotactions/go/setup@main # @main is rewritten to the exact release tag by internal-release.yml
+        with:
+          go-version: ${{ inputs.go-version }}
+          working-directory: ${{ inputs.working-directory }}
+          # why: lint and test would share one setup-go cache key and only the first job to finish could save it
+          cache: "false"
+
+      - uses: dotactions/go/lint@main # @main is rewritten to the exact release tag by internal-release.yml
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          version: ${{ inputs.golangci-lint-version }}
+          config: ${{ inputs.lint-config }}
+          args: ${{ inputs.lint-args }}
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      coverage: ${{ steps.test.outputs.coverage }}
+      coverage-file: ${{ steps.test.outputs.coverage-file }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dotactions/go/setup@main # @main is rewritten to the exact release tag by internal-release.yml
+        with:
+          go-version: ${{ inputs.go-version }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - id: test
+        uses: dotactions/go/test@main # @main is rewritten to the exact release tag by internal-release.yml
+        with:
+          working-directory: ${{ inputs.working-directory }}
+          args: ${{ inputs.test-args }}
+          race: ${{ inputs.race }}
+
+      - name: Upload test results
+        if: always() && steps.test.outputs.junit-file != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-test-results${{ inputs.name-suffix && format('-{0}', inputs.name-suffix) || '' }}
+          path: ${{ steps.test.outputs.junit-file }}
+
+      - name: Upload coverage profile
+        if: always() && steps.test.outputs.coverage-file != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-coverage${{ inputs.name-suffix && format('-{0}', inputs.name-suffix) || '' }}
+          path: ${{ steps.test.outputs.coverage-file }}
+
+  # why: the write token lives in a job that never runs the code under test
+  report:
+    name: Coverage report
+    needs: test
+    # why: fork PRs get a read-only token, so commenting would fail the run
+    if: >-
+      always() && inputs.coverage-report && needs.test.outputs.coverage-file != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: go-coverage${{ inputs.name-suffix && format('-{0}', inputs.name-suffix) || '' }}
+          path: ${{ inputs.working-directory }}
+
+      - name: Report coverage
+        uses: getsentry/coverage-action@b3db4e382bd9859c913a96093a3d369b67f59177 # 0.4.4
+        with:
+          token: ${{ github.token }}
+          files: ${{ needs.test.outputs.coverage-file }}
+          disable-search: "true"
+          coverage-format: go
+          flags: go${{ inputs.name-suffix && format('-{0}', inputs.name-suffix) || '' }}
+          comment-key: go${{ inputs.name-suffix && format('-{0}', inputs.name-suffix) || '' }}
+          status-key: go${{ inputs.name-suffix && format('-{0}', inputs.name-suffix) || '' }}
+          title: Go coverage
+          post-pr-comment: "true"
+          enable-tests: "false"
+          informational-project: "true"
+          informational-patch: "true"
