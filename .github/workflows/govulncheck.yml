@@ -54,11 +54,19 @@ jobs:
       - name: Run govulncheck
         env:
           WORK_DIR: ${{ inputs.working-directory }}
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 -C "$WORK_DIR" -format sarif ./... > govulncheck.sarif
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 -C "$WORK_DIR" -format sarif ./... > govulncheck.sarif
+          # why: govulncheck writes %SRCROOT% URIs relative to the module, but reports and code scanning expect repo paths
+          PREFIX=$(cd "$WORK_DIR" && pwd -P)
+          PREFIX=${PREFIX#"$(pwd -P)"}
+          PREFIX=${PREFIX#/}
+          PREFIX=${PREFIX:+$PREFIX/}
+          jq --arg p "$PREFIX" '(.. | objects | select(.uriBaseId? == "%SRCROOT%") | .uri) |= $p + .' govulncheck.sarif > govulncheck.sarif.tmp
+          mv govulncheck.sarif.tmp govulncheck.sarif
 
       - name: Report govulncheck Results
         uses: dotactions/sarif-reporter@5796dde6b1e4f1a36ef3bdfde3002a8623715d29 # v0.2.0
-        if: always() && hashFiles('govulncheck.sarif') != ''
+        if: ${{ !cancelled() && hashFiles('govulncheck.sarif') != '' }}
         with:
           title: "Go Vulnerability Report"
           sarif-file: "govulncheck.sarif"
@@ -71,7 +79,7 @@ jobs:
 
       - name: Upload SARIF Artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always() && inputs.upload-artifact && hashFiles('govulncheck.sarif') != ''
+        if: ${{ !cancelled() && inputs.upload-artifact && hashFiles('govulncheck.sarif') != '' }}
         with:
           name: govulncheck-sarif
           path: "govulncheck.sarif"
