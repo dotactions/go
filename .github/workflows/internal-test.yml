@@ -1,0 +1,172 @@
+name: Test Go Actions
+
+on:
+  pull_request:
+    paths: &paths
+      - "setup/**"
+      - "lint/**"
+      - "test/**"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/govulncheck.yml"
+      - ".github/workflows/internal-test.yml"
+      - "tests/**"
+  push:
+    branches: [main]
+    paths: *paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internal-test-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test-setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - &checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test setup from go.mod
+        id: setup
+        uses: ./setup
+        with:
+          working-directory: tests/fixtures
+
+      - name: Assert Go version comes from go.mod
+        env:
+          GO_VERSION: ${{ steps.setup.outputs.go-version }}
+        run: |
+          [[ "$GO_VERSION" == 1.26* ]] || { echo "Expected output 1.26.x, got '$GO_VERSION'"; exit 1; }
+          [[ "$(go env GOVERSION)" == go1.26* ]] || { echo "Expected go1.26.x, got $(go env GOVERSION)"; exit 1; }
+
+      - name: Test setup with an explicit Go version
+        id: setup-explicit
+        uses: ./setup
+        with:
+          working-directory: tests/fixtures
+          go-version: "1.25"
+          cache: "false"
+
+      - name: Assert explicit Go version wins over go.mod
+        env:
+          GO_VERSION: ${{ steps.setup-explicit.outputs.go-version }}
+        run: |
+          [[ "$GO_VERSION" == 1.25* ]] || { echo "Expected output 1.25.x, got '$GO_VERSION'"; exit 1; }
+
+  test-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - &setup
+        uses: ./setup
+        with:
+          working-directory: tests/fixtures
+
+      - name: Test lint
+        uses: ./lint
+        with:
+          working-directory: tests/fixtures
+
+      - name: Test lint with a repo-relative config outside the module's parents
+        uses: ./lint
+        with:
+          working-directory: tests/fixtures
+          config: tests/golangci.yml
+
+      - name: Test lint with a missing config
+        id: lint-missing-config
+        continue-on-error: true
+        uses: ./lint
+        with:
+          working-directory: tests/fixtures
+          config: tests/missing.yml
+
+      - name: Assert missing config is rejected
+        env:
+          OUTCOME: ${{ steps.lint-missing-config.outcome }}
+        run: '[ "$OUTCOME" = failure ] || { echo "Expected failure, got $OUTCOME"; exit 1; }'
+
+      - name: Test lint on unformatted code
+        id: lint-unformatted
+        continue-on-error: true
+        uses: ./lint
+        with:
+          working-directory: tests/unformatted
+          config: tests/golangci.yml
+
+      - name: Assert unformatted code is rejected
+        env:
+          OUTCOME: ${{ steps.lint-unformatted.outcome }}
+        run: '[ "$OUTCOME" = failure ] || { echo "Expected failure, got $OUTCOME"; exit 1; }'
+
+  test-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - *setup
+
+      - name: Test test with an invalid race value
+        id: test-invalid
+        continue-on-error: true
+        uses: ./test
+        with:
+          working-directory: tests/fixtures
+          race: "yes"
+
+      - name: Assert invalid race value is rejected
+        env:
+          OUTCOME: ${{ steps.test-invalid.outcome }}
+        run: '[ "$OUTCOME" = failure ] || { echo "Expected failure, got $OUTCOME"; exit 1; }'
+
+      - name: Test test
+        id: test
+        uses: ./test
+        with:
+          working-directory: tests/fixtures
+
+      - name: Assert outputs and repo-relative coverage paths
+        env:
+          COVERAGE: ${{ steps.test.outputs.coverage }}
+          COVERAGE_FILE: ${{ steps.test.outputs.coverage-file }}
+          JUNIT_FILE: ${{ steps.test.outputs.junit-file }}
+        run: |
+          [ "$COVERAGE" = "50.0" ] || { echo "Expected coverage 50.0, got '$COVERAGE'"; exit 1; }
+          [ "$COVERAGE_FILE" = tests/fixtures/coverage.out ] || { echo "Unexpected coverage-file '$COVERAGE_FILE'"; exit 1; }
+          [ "$JUNIT_FILE" = tests/fixtures/unit-tests.xml ] || { echo "Unexpected junit-file '$JUNIT_FILE'"; exit 1; }
+          grep -q '<testcase .*name="TestAdd"' "$JUNIT_FILE" || { echo "TestAdd missing from $JUNIT_FILE"; exit 1; }
+          BAD=$(tail -n +2 "$COVERAGE_FILE" | grep -v '^tests/fixtures/calc\.go:' || true)
+          [ -z "$BAD" ] || { echo "Paths not rewritten:"; echo "$BAD"; exit 1; }
+
+  # Runs main's actions (ci.yml references them @main), so this covers the workflow's wiring, not this checkout's actions.
+  test-ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+      statuses: write
+    with:
+      working-directory: tests/fixtures
+      coverage-report: false
+
+  test-govulncheck:
+    uses: ./.github/workflows/govulncheck.yml
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    with:
+      working-directory: tests/fixtures
+      post-comment: false

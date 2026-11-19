@@ -83,7 +83,7 @@ Notes:
 - `coverage.out` and `unit-tests.xml` are written into `working-directory`; add them to `.gitignore`.
 - `race: true` needs cgo; set `race: false` where `CGO_ENABLED=0` (e.g. Alpine containers).
 - gotestsum is built with `go run`, so it needs module proxy access and fails under `GOFLAGS=-mod=vendor`.
-- Tested on Linux and macOS runners.
+- Tested on Linux runners.
 
 | Input               | Description                                                   | Default         |
 | :------------------ | :------------------------------------------------------------ | :-------------- |

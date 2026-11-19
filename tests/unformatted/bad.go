@@ -1,0 +1,4 @@
+package unformatted
+
+func  Bad( ) {
+}
