@@ -54,7 +54,7 @@ runs:
 
     - name: Make coverage paths repo-relative
       id: coverage
-      if: always()
+      if: ${{ !cancelled() }}
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
