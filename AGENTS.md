@@ -26,7 +26,7 @@ Opinionated composite actions and a reusable CI workflow for Go modules, consume
 | Path | Purpose |
 | :--- | :--- |
 | `setup/action.yml` | Go install from `go.mod`, module and build cache |
-| `lint/action.yml` | `gofmt -s` check + golangci-lint |
+| `lint/action.yml` | golangci-lint (formatting via the config's `formatters`) |
 | `test/action.yml` | gotestsum, JUnit, repo-relative coverage profile |
 | `.github/workflows/ci.yml` | Public reusable workflow (`workflow_call`) wiring the actions |
 | `.github/workflows/govulncheck.yml` | Public reusable workflow: govulncheck → SARIF → `dotactions/sarif-reporter`. Third-party pins only; no `@main` self-references |
