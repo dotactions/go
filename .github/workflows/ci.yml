@@ -57,14 +57,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dotactions/go/setup@main # @main is rewritten to the exact release tag by internal-release.yml
+      - uses: dotactions/go/setup@v0.1.1 # @main is rewritten to the exact release tag by internal-release.yml
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
           # why: lint and test would share one setup-go cache key and only the first job to finish could save it
           cache: "false"
 
-      - uses: dotactions/go/lint@main # @main is rewritten to the exact release tag by internal-release.yml
+      - uses: dotactions/go/lint@v0.1.1 # @main is rewritten to the exact release tag by internal-release.yml
         with:
           working-directory: ${{ inputs.working-directory }}
           version: ${{ inputs.golangci-lint-version }}
@@ -83,13 +83,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dotactions/go/setup@main # @main is rewritten to the exact release tag by internal-release.yml
+      - uses: dotactions/go/setup@v0.1.1 # @main is rewritten to the exact release tag by internal-release.yml
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
 
       - id: test
-        uses: dotactions/go/test@main # @main is rewritten to the exact release tag by internal-release.yml
+        uses: dotactions/go/test@v0.1.1 # @main is rewritten to the exact release tag by internal-release.yml
         with:
           working-directory: ${{ inputs.working-directory }}
           args: ${{ inputs.test-args }}
